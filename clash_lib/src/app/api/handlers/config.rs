@@ -16,7 +16,7 @@ use crate::{
     GlobalState,
     app::{
         api::AppState,
-        dispatcher,
+        dispatcher::Dispatcher,
         dns::ThreadSafeDNSResolver,
         inbound::manager::{InboundManager, Ports},
     },
@@ -26,14 +26,14 @@ use crate::{
 #[derive(Clone)]
 struct ConfigState {
     inbound_manager: Arc<InboundManager>,
-    dispatcher: Arc<dispatcher::Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     global_state: Arc<Mutex<GlobalState>>,
     dns_resolver: ThreadSafeDNSResolver,
 }
 
 pub fn routes(
     inbound_manager: Arc<InboundManager>,
-    dispatcher: Arc<dispatcher::Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     global_state: Arc<Mutex<GlobalState>>,
     dns_resolver: ThreadSafeDNSResolver,
 ) -> Router<Arc<AppState>> {

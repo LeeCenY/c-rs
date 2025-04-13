@@ -22,7 +22,7 @@ use std::sync::Arc;
 pub struct NetworkInboundHandler {
     pub name: String,
     pub listener: InboundOpts,
-    pub dispatcher: Arc<Dispatcher>,
+    pub dispatcher: Arc<dyn Dispatcher>,
     pub authenticator: ThreadSafeAuthenticator,
 }
 

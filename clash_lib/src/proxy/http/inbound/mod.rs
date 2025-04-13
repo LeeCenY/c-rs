@@ -3,7 +3,7 @@ mod connector;
 mod proxy;
 
 use crate::{
-    Dispatcher,
+    app::dispatcher::Dispatcher,
     common::auth::ThreadSafeAuthenticator,
     proxy::{inbound::InboundHandlerTrait, utils::apply_tcp_options},
 };
@@ -18,7 +18,7 @@ use tracing::warn;
 pub struct HttpInbound {
     addr: SocketAddr,
     allow_lan: bool,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 }
 
@@ -32,7 +32,7 @@ impl HttpInbound {
     pub fn new(
         addr: SocketAddr,
         allow_lan: bool,
-        dispatcher: Arc<Dispatcher>,
+        dispatcher: Arc<dyn Dispatcher>,
         authenticator: ThreadSafeAuthenticator,
     ) -> Self {
         Self {

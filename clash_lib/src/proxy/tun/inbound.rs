@@ -31,7 +31,7 @@ async fn handle_inbound_stream(
     stream: netstack_smoltcp::TcpStream,
     local_addr: SocketAddr,
     remote_addr: SocketAddr,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     so_mark: u32,
 ) {
     let sess = Session {
@@ -57,7 +57,7 @@ async fn handle_inbound_stream(
 
 async fn handle_inbound_datagram(
     socket: netstack_smoltcp::UdpSocket,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     resolver: ThreadSafeDNSResolver,
     so_mark: u32,
     dns_hijack: bool,
@@ -240,7 +240,7 @@ async fn handle_inbound_datagram(
 
 pub fn get_runner(
     cfg: TunConfig,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     resolver: ThreadSafeDNSResolver,
 ) -> Result<Option<Runner>, Error> {
     if !cfg.enable {

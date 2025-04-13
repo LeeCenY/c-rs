@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use erased_serde::Serialize;
 use hyper::Uri;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
@@ -41,7 +42,7 @@ use crate::{
     },
 };
 
-use super::utils::proxy_groups_dag_sort;
+use super::{OutboundManager, utils::proxy_groups_dag_sort};
 
 #[cfg(feature = "shadowsocks")]
 use crate::proxy::shadowsocks;
@@ -54,7 +55,7 @@ use crate::proxy::tuic;
 
 static RESERVED_PROVIDER_NAME: &str = "default";
 
-pub struct OutboundManager {
+pub struct OutboundManagerImpl {
     handlers: HashMap<String, AnyOutboundHandler>,
     proxy_providers: HashMap<String, ThreadSafeProxyProvider>,
     proxy_manager: ProxyManager,
@@ -63,62 +64,25 @@ pub struct OutboundManager {
 
 static DEFAULT_LATENCY_TEST_URL: &str = "http://www.gstatic.com/generate_204";
 
-pub type ThreadSafeOutboundManager = Arc<OutboundManager>;
+pub type ThreadSafeOutboundManager = Arc<dyn OutboundManager>;
 
-impl OutboundManager {
-    pub async fn new(
-        outbounds: Vec<OutboundProxyProtocol>,
-        outbound_groups: Vec<OutboundGroupProtocol>,
-        proxy_providers: HashMap<String, OutboundProxyProviderDef>,
-        proxy_names: Vec<String>,
-        dns_resolver: ThreadSafeDNSResolver,
-        cache_store: ThreadSafeCacheFile,
-        cwd: String,
-    ) -> Result<Self, Error> {
-        let handlers = HashMap::new();
-        let provider_registry = HashMap::new();
-        let selector_control = HashMap::new();
-        let proxy_manager = ProxyManager::new(dns_resolver.clone());
-
-        let mut m = Self {
-            handlers,
-            proxy_manager,
-            selector_control,
-            proxy_providers: provider_registry,
-        };
-
-        debug!("initializing proxy providers");
-        m.load_proxy_providers(cwd, proxy_providers, dns_resolver)
-            .await?;
-
-        debug!("initializing handlers");
-        m.load_handlers(outbounds, outbound_groups, proxy_names, cache_store)
-            .await?;
-
-        debug!("initializing connectors");
-        m.init_handler_connectors().await?;
-
-        Ok(m)
-    }
-
-    pub fn get_outbound(&self, name: &str) -> Option<AnyOutboundHandler> {
+#[async_trait]
+impl OutboundManager for OutboundManagerImpl {
+    fn get_outbound(&self, name: &str) -> Option<AnyOutboundHandler> {
         self.handlers.get(name).cloned()
     }
 
     /// this doesn't populate history/liveness information
-    pub fn get_proxy_provider(&self, name: &str) -> Option<ThreadSafeProxyProvider> {
+    fn get_proxy_provider(&self, name: &str) -> Option<ThreadSafeProxyProvider> {
         self.proxy_providers.get(name).cloned()
     }
 
     // API handles start
-    pub fn get_selector_control(
-        &self,
-        name: &str,
-    ) -> Option<ThreadSafeSelectorControl> {
+    fn get_selector_control(&self, name: &str) -> Option<ThreadSafeSelectorControl> {
         self.selector_control.get(name).cloned()
     }
 
-    pub async fn get_proxies(&self) -> HashMap<String, Box<dyn Serialize + Send>> {
+    async fn get_proxies(&self) -> HashMap<String, Box<dyn Serialize + Send>> {
         let mut r = HashMap::new();
 
         let proxy_manager = self.proxy_manager.clone();
@@ -153,7 +117,7 @@ impl OutboundManager {
         r
     }
 
-    pub async fn get_proxy(
+    async fn get_proxy(
         &self,
         proxy: &AnyOutboundHandler,
     ) -> HashMap<String, Box<dyn Serialize + Send>> {
@@ -174,7 +138,7 @@ impl OutboundManager {
     }
 
     /// a wrapper of proxy_manager.url_test so that proxy_manager is not exposed
-    pub async fn url_test(
+    async fn url_test(
         &self,
         proxy: AnyOutboundHandler,
         url: &str,
@@ -184,11 +148,46 @@ impl OutboundManager {
         proxy_manager.url_test(proxy, url, Some(timeout)).await
     }
 
-    pub fn get_proxy_providers(&self) -> HashMap<String, ThreadSafeProxyProvider> {
+    fn get_proxy_providers(&self) -> HashMap<String, ThreadSafeProxyProvider> {
         self.proxy_providers.clone()
     }
+}
 
-    // API handlers end
+impl OutboundManagerImpl {
+    pub async fn new(
+        outbounds: Vec<OutboundProxyProtocol>,
+        outbound_groups: Vec<OutboundGroupProtocol>,
+        proxy_providers: HashMap<String, OutboundProxyProviderDef>,
+        proxy_names: Vec<String>,
+        dns_resolver: ThreadSafeDNSResolver,
+        cache_store: Option<ThreadSafeCacheFile>,
+        cwd: String,
+    ) -> Result<Self, Error> {
+        let handlers = HashMap::new();
+        let provider_registry = HashMap::new();
+        let selector_control = HashMap::new();
+        let proxy_manager = ProxyManager::new(dns_resolver.clone());
+
+        let mut m = Self {
+            handlers,
+            proxy_manager,
+            selector_control,
+            proxy_providers: provider_registry,
+        };
+
+        debug!("initializing proxy providers");
+        m.load_proxy_providers(cwd, proxy_providers, dns_resolver)
+            .await?;
+
+        debug!("initializing handlers");
+        m.load_handlers(outbounds, outbound_groups, proxy_names, cache_store)
+            .await?;
+
+        debug!("initializing connectors");
+        m.init_handler_connectors().await?;
+
+        Ok(m)
+    }
 
     async fn init_handler_connectors(&self) -> Result<(), Error> {
         let mut connectors = HashMap::new();
@@ -219,7 +218,7 @@ impl OutboundManager {
         outbounds: Vec<OutboundProxyProtocol>,
         outbound_groups: Vec<OutboundGroupProtocol>,
         proxy_names: Vec<String>,
-        cache_store: ThreadSafeCacheFile,
+        cache_store: Option<ThreadSafeCacheFile>,
     ) -> Result<(), Error> {
         let proxy_manager = &self.proxy_manager;
         let provider_registry = &mut self.proxy_providers;
@@ -644,8 +643,11 @@ impl OutboundManager {
                     }
 
                     let stored_selection =
-                        cache_store.get_selected(&proto.name).await;
-
+                        if let Some(cache_store) = cache_store.as_ref() {
+                            cache_store.get_selected(&proto.name).await
+                        } else {
+                            None
+                        };
                     let selector = selector::Handler::new(
                         selector::HandlerOptions {
                             name: proto.name.clone(),
@@ -684,7 +686,11 @@ impl OutboundManager {
             PlainProvider::new(PROXY_GLOBAL.to_owned(), g, hc).unwrap(),
         ));
 
-        let stored_selection = cache_store.get_selected(PROXY_GLOBAL).await;
+        let stored_selection = if let Some(cache_store) = cache_store {
+            cache_store.get_selected(PROXY_GLOBAL).await
+        } else {
+            None
+        };
         let h = selector::Handler::new(
             selector::HandlerOptions {
                 name: PROXY_GLOBAL.to_owned(),

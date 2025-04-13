@@ -45,7 +45,7 @@ pub fn maybe_socks_addr(r: &Uri) -> Option<SocksAddr> {
 async fn proxy(
     req: Request<hyper::body::Incoming>,
     src: SocketAddr,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 ) -> Result<Response<HyperResponseBody>, ProxyError> {
     if authenticator.enabled() {
@@ -117,7 +117,7 @@ async fn proxy(
 
 struct ProxyService {
     src: SocketAddr,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 }
 
@@ -140,7 +140,7 @@ impl hyper::service::Service<Request<hyper::body::Incoming>> for ProxyService {
 pub async fn handle(
     stream: AnyStream,
     src: SocketAddr,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 ) {
     tokio::task::spawn(async move {

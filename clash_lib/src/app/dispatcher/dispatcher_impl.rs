@@ -12,6 +12,7 @@ use crate::{
     proxy::{AnyInboundDatagram, ClientStream, datagram::UdpPacket},
     session::{Session, SocksAddr},
 };
+use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use std::{
     collections::HashMap,
@@ -25,11 +26,11 @@ use tracing::{Instrument, debug, error, info, info_span, instrument, trace, warn
 
 use crate::app::dns::ThreadSafeDNSResolver;
 
-use super::statistics_manager::Manager;
+use super::{Dispatcher, statistics_manager::Manager};
 
 const DEFAULT_BUFFER_SIZE: usize = 16 * 1024;
 
-pub struct Dispatcher {
+pub struct DispatcherImpl {
     outbound_manager: ThreadSafeOutboundManager,
     router: ThreadSafeRouter,
     resolver: ThreadSafeDNSResolver,
@@ -38,13 +39,13 @@ pub struct Dispatcher {
     tcp_buffer_size: usize,
 }
 
-impl Debug for Dispatcher {
+impl Debug for DispatcherImpl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Dispatcher").finish()
     }
 }
 
-impl Dispatcher {
+impl DispatcherImpl {
     pub fn new(
         outbound_manager: ThreadSafeOutboundManager,
         router: ThreadSafeRouter,
@@ -62,19 +63,22 @@ impl Dispatcher {
             tcp_buffer_size: tcp_buffer_size.unwrap_or(DEFAULT_BUFFER_SIZE),
         }
     }
+}
 
-    pub async fn set_mode(&self, mode: RunMode) {
+#[async_trait]
+impl Dispatcher for DispatcherImpl {
+    async fn set_mode(&self, mode: RunMode) {
         info!("run mode switched to {}", mode);
 
         *self.mode.write().await = mode;
     }
 
-    pub async fn get_mode(&self) -> RunMode {
+    async fn get_mode(&self) -> RunMode {
         *self.mode.read().await
     }
 
     #[instrument(skip(self, sess, lhs))]
-    pub async fn dispatch_stream(
+    async fn dispatch_stream(
         &self,
         mut sess: Session,
         mut lhs: Box<dyn ClientStream>,
@@ -238,8 +242,7 @@ impl Dispatcher {
     /// Dispatch a UDP packet to outbound handler
     /// returns the close sender
     #[instrument]
-    #[must_use]
-    pub async fn dispatch_datagram(
+    async fn dispatch_datagram(
         &self,
         sess: Session,
         udp_inbound: AnyInboundDatagram,
@@ -450,6 +453,8 @@ impl Dispatcher {
         let s2 = sess.clone();
         let t2 = tokio::spawn(async move {
             while let Some(packet) = remote_receiver_r.recv().await {
+                // TODO: this clone is only for logging, we should be able to avoid
+                // it
                 match local_w.send(packet.clone()).await {
                     Ok(_) => {}
                     Err(err) => {

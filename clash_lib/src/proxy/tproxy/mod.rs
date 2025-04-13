@@ -17,7 +17,7 @@ use tracing::{trace, warn};
 pub struct TproxyInbound {
     addr: SocketAddr,
     allow_lan: bool,
-    dispather: Arc<Dispatcher>,
+    dispather: Arc<dyn Dispatcher>,
 }
 
 impl Drop for TproxyInbound {
@@ -30,7 +30,7 @@ impl TproxyInbound {
     pub fn new(
         addr: SocketAddr,
         allow_lan: bool,
-        dispather: Arc<Dispatcher>,
+        dispather: Arc<dyn Dispatcher>,
     ) -> Self {
         Self {
             addr,
@@ -122,7 +122,7 @@ impl InboundHandlerTrait for TproxyInbound {
 async fn handle_inbound_datagram(
     allow_lan: bool,
     socket: Arc<unix_udp_sock::UdpSocket>,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
 ) -> anyhow::Result<()> {
     // dispatcher <-> tproxy communications
     let (l_tx, mut l_rx) = tokio::sync::mpsc::channel(32);

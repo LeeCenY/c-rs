@@ -1,5 +1,5 @@
 use crate::{
-    Dispatcher,
+    app::dispatcher::Dispatcher,
     common::{auth::ThreadSafeAuthenticator, errors::new_io_error},
     proxy::{
         socks::{
@@ -25,7 +25,7 @@ use tracing::{instrument, trace, warn};
 pub async fn handle_tcp<'a>(
     sess: &'a mut Session,
     mut s: TcpStream,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 ) -> io::Result<()> {
     // handshake

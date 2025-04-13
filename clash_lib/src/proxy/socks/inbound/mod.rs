@@ -2,7 +2,7 @@ mod datagram;
 mod stream;
 
 use crate::{
-    Dispatcher,
+    app::dispatcher::Dispatcher,
     common::auth::ThreadSafeAuthenticator,
     proxy::{inbound::InboundHandlerTrait, utils::apply_tcp_options},
     session::{Network, Session, Type},
@@ -18,7 +18,7 @@ pub use datagram::Socks5UDPCodec;
 pub struct SocksInbound {
     addr: SocketAddr,
     allow_lan: bool,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 }
 
@@ -32,7 +32,7 @@ impl SocksInbound {
     pub fn new(
         addr: SocketAddr,
         allow_lan: bool,
-        dispatcher: Arc<Dispatcher>,
+        dispatcher: Arc<dyn Dispatcher>,
         authenticator: ThreadSafeAuthenticator,
     ) -> Self {
         Self {

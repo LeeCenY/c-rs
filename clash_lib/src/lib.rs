@@ -9,8 +9,8 @@ extern crate anyhow;
 
 use crate::{
     app::{
-        dispatcher::Dispatcher, dns, inbound::manager::InboundManager,
-        outbound::manager::OutboundManager, router::Router,
+        dispatcher::DispatcherImpl, dns, inbound::manager::InboundManager,
+        router::Router,
     },
     config::{
         def,
@@ -18,11 +18,13 @@ use crate::{
     },
 };
 use app::{
-    dispatcher::StatisticsManager,
+    dispatcher::{Dispatcher, StatisticsManager},
     dns::{SystemResolver, ThreadSafeDNSResolver},
     logging::LogEvent,
     net::init_net_config,
+    outbound::manager::{OutboundManagerImpl, ThreadSafeOutboundManager},
     profile,
+    router::{RouterImpl, ThreadSafeRouter},
 };
 use common::{auth, http::new_http_client, mmdb};
 use config::def::LogLevel;
@@ -312,9 +314,9 @@ pub async fn start(
 struct RuntimeComponents {
     cache_store: profile::ThreadSafeCacheFile,
     dns_resolver: ThreadSafeDNSResolver,
-    outbound_manager: Arc<OutboundManager>,
-    router: Arc<Router>,
-    dispatcher: Arc<Dispatcher>,
+    outbound_manager: ThreadSafeOutboundManager,
+    router: ThreadSafeRouter,
+    dispatcher: Arc<dyn Dispatcher>,
     statistics_manager: Arc<StatisticsManager>,
     inbound_manager: Arc<InboundManager>,
 
@@ -373,7 +375,7 @@ async fn create_components(
 
     debug!("initializing outbound manager");
     let outbound_manager = Arc::new(
-        OutboundManager::new(
+        OutboundManagerImpl::new(
             config
                 .proxies
                 .into_values()
@@ -393,7 +395,7 @@ async fn create_components(
             config.proxy_providers,
             config.proxy_names,
             dns_resolver.clone(),
-            cache_store.clone(),
+            Some(cache_store.clone()),
             cwd.to_string_lossy().to_string(),
         )
         .await?,
@@ -412,7 +414,7 @@ async fn create_components(
 
     debug!("initializing router");
     let router = Arc::new(
-        Router::new(
+        RouterImpl::new(
             config.rules,
             config.rule_providers,
             dns_resolver.clone(),
@@ -427,7 +429,7 @@ async fn create_components(
     let statistics_manager = StatisticsManager::new();
 
     debug!("initializing dispatcher");
-    let dispatcher = Arc::new(Dispatcher::new(
+    let dispatcher = Arc::new(DispatcherImpl::new(
         outbound_manager.clone(),
         router.clone(),
         dns_resolver.clone(),

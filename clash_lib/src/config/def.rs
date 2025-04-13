@@ -72,7 +72,7 @@ pub struct TunConfig {
     pub dns_hijack: DnsHijack,
 }
 
-#[derive(Serialize, Deserialize, Default, Copy, Clone)]
+#[derive(Serialize, Deserialize, Default, Copy, Clone, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum RunMode {
     #[serde(alias = "Global")]

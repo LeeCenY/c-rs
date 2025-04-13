@@ -16,6 +16,7 @@ use crate::{
 use crate::app::router::rules::final_::Final;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use hyper::Uri;
 use rules::domain_regex::DomainRegex;
 use tracing::{error, info, trace};
@@ -33,63 +34,36 @@ mod rules;
 use crate::common::geodata::GeoData;
 pub use rules::RuleMatcher;
 
-pub struct Router {
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait Router: Send + Sync {
+    async fn match_route<'a>(
+        &'a self,
+        sess: &mut Session,
+    ) -> (&'a str, Option<&'a Box<dyn RuleMatcher>>);
+
+    /// API handlers
+    fn get_all_rules(&self) -> &Vec<Box<dyn RuleMatcher>>;
+}
+
+pub struct RouterImpl {
     rules: Vec<Box<dyn RuleMatcher>>,
     dns_resolver: ThreadSafeDNSResolver,
 
     asn_mmdb: Option<Arc<Mmdb>>,
 }
 
-pub type ThreadSafeRouter = Arc<Router>;
+pub type ThreadSafeRouter = Arc<dyn Router>;
 
 const MATCH: &str = "MATCH";
 
-impl Router {
-    pub async fn new(
-        rules: Vec<RuleType>,
-        rule_providers: HashMap<String, RuleProviderDef>,
-        dns_resolver: ThreadSafeDNSResolver,
-        country_mmdb: Arc<Mmdb>,
-        asn_mmdb: Option<Arc<Mmdb>>,
-        geodata: Arc<GeoData>,
-        cwd: String,
-    ) -> Self {
-        let mut rule_provider_registry = HashMap::new();
-
-        Self::load_rule_providers(
-            rule_providers,
-            &mut rule_provider_registry,
-            dns_resolver.clone(),
-            country_mmdb.clone(),
-            geodata.clone(),
-            cwd,
-        )
-        .await
-        .ok();
-
-        Self {
-            rules: rules
-                .into_iter()
-                .map(|r| {
-                    map_rule_type(
-                        r,
-                        country_mmdb.clone(),
-                        geodata.clone(),
-                        Some(&rule_provider_registry),
-                    )
-                })
-                .collect(),
-            dns_resolver,
-
-            asn_mmdb,
-        }
-    }
-
+#[async_trait]
+impl Router for RouterImpl {
     /// this mutates the session, attaching resolved IP and ASN
-    pub async fn match_route(
-        &self,
+    async fn match_route<'a>(
+        &'a self,
         sess: &mut Session,
-    ) -> (&str, Option<&Box<dyn RuleMatcher>>) {
+    ) -> (&'a str, Option<&'a Box<dyn RuleMatcher>>) {
         let mut sess_resolved = false;
 
         for r in self.rules.iter() {
@@ -144,6 +118,52 @@ impl Router {
         }
 
         (MATCH, None)
+    }
+
+    fn get_all_rules(&self) -> &Vec<Box<dyn RuleMatcher>> {
+        &self.rules
+    }
+}
+
+impl RouterImpl {
+    pub async fn new(
+        rules: Vec<RuleType>,
+        rule_providers: HashMap<String, RuleProviderDef>,
+        dns_resolver: ThreadSafeDNSResolver,
+        country_mmdb: Arc<Mmdb>,
+        asn_mmdb: Option<Arc<Mmdb>>,
+        geodata: Arc<GeoData>,
+        cwd: String,
+    ) -> Self {
+        let mut rule_provider_registry = HashMap::new();
+
+        Self::load_rule_providers(
+            rule_providers,
+            &mut rule_provider_registry,
+            dns_resolver.clone(),
+            country_mmdb.clone(),
+            geodata.clone(),
+            cwd,
+        )
+        .await
+        .ok();
+
+        Self {
+            rules: rules
+                .into_iter()
+                .map(|r| {
+                    map_rule_type(
+                        r,
+                        country_mmdb.clone(),
+                        geodata.clone(),
+                        Some(&rule_provider_registry),
+                    )
+                })
+                .collect(),
+            dns_resolver,
+
+            asn_mmdb,
+        }
     }
 
     async fn load_rule_providers(
@@ -219,11 +239,6 @@ impl Router {
         }
 
         Ok(())
-    }
-
-    /// API handlers
-    pub fn get_all_rules(&self) -> &Vec<Box<dyn RuleMatcher>> {
-        &self.rules
     }
 }
 
@@ -351,7 +366,10 @@ mod tests {
     use anyhow::Ok;
 
     use crate::{
-        app::dns::{MockClashResolver, SystemResolver},
+        app::{
+            dns::{MockClashResolver, SystemResolver},
+            router::Router,
+        },
         common::{geodata::GeoData, http::new_http_client, mmdb::Mmdb},
         config::internal::rule::RuleType,
         session::Session,
@@ -400,7 +418,7 @@ mod tests {
         .await
         .unwrap();
 
-        let router = super::Router::new(
+        let router = super::RouterImpl::new(
             vec![
                 RuleType::GeoIP {
                     target: "DIRECT".to_string(),

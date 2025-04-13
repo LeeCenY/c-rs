@@ -27,7 +27,7 @@ use super::{
 #[derive(Clone)]
 pub struct TunnelInbound {
     listen: SocketAddr,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     network: Vec<String>,
     target: SocksAddr,
 }
@@ -41,7 +41,7 @@ impl Drop for TunnelInbound {
 impl TunnelInbound {
     pub fn new(
         addr: SocketAddr,
-        dispatcher: Arc<Dispatcher>,
+        dispatcher: Arc<dyn Dispatcher>,
         network: Vec<String>,
         target: String,
     ) -> anyhow::Result<Self> {

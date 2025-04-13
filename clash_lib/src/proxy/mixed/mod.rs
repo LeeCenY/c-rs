@@ -1,5 +1,5 @@
 use crate::{
-    Dispatcher,
+    app::dispatcher::Dispatcher,
     common::auth::ThreadSafeAuthenticator,
     session::{Network, Session},
 };
@@ -14,7 +14,7 @@ use super::{http, inbound::InboundHandlerTrait, socks, utils::apply_tcp_options}
 pub struct MixedInbound {
     addr: SocketAddr,
     allow_lan: bool,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     authenticator: ThreadSafeAuthenticator,
 }
 
@@ -28,7 +28,7 @@ impl MixedInbound {
     pub fn new(
         addr: SocketAddr,
         allow_lan: bool,
-        dispatcher: Arc<Dispatcher>,
+        dispatcher: Arc<dyn Dispatcher>,
         authenticator: ThreadSafeAuthenticator,
     ) -> Self {
         Self {

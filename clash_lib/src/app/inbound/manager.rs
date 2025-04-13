@@ -32,7 +32,7 @@ pub struct Ports {
 type TaskHandle = RwLock<Option<(JoinHandle<Result<()>>, oneshot::Sender<()>)>>;
 
 pub struct InboundManager {
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
     bind_address: ArcSwap<BindAddress>,
     authenticator: ThreadSafeAuthenticator,
 
@@ -46,7 +46,7 @@ impl InboundManager {
     pub async fn new(
         bind_address: BindAddress,
         _authentication: Vec<String>, // TODO
-        dispatcher: Arc<Dispatcher>,
+        dispatcher: Arc<dyn Dispatcher>,
         authenticator: ThreadSafeAuthenticator,
         inbounds_opt: HashMap<String, InboundOpts>,
     ) -> Result<Self> {

@@ -1,5 +1,5 @@
 use crate::{
-    Dispatcher,
+    app::dispatcher::Dispatcher,
     proxy::{AnyStream, ProxyError},
     session::{Network, Session, Type},
 };
@@ -20,11 +20,11 @@ use super::proxy::maybe_socks_addr;
 #[derive(Clone)]
 pub struct Connector {
     src: SocketAddr,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<dyn Dispatcher>,
 }
 
 impl Connector {
-    pub fn new(src: SocketAddr, dispatcher: Arc<Dispatcher>) -> Self {
+    pub fn new(src: SocketAddr, dispatcher: Arc<dyn Dispatcher>) -> Self {
         Self { src, dispatcher }
     }
 }
