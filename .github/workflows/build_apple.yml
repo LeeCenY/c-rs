@@ -2,10 +2,8 @@ name: Build iOS XCFramework
 
 on:
   push:
-    branches: [ iOS ] # 在 iOS 分支 push 时触发
-    tags:
-      - 'release-*' # 只在以 release- 开头的 tag 触发，如 release-2024-06-11
-  workflow_dispatch:
+    branches: [ iOS ] # 每次 iOS 分支有提交就触发
+  workflow_dispatch: # 保留手动触发选项
 
 jobs:
   build-ios:
@@ -15,32 +13,9 @@ jobs:
       # 1. 检出代码
       - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2 # 获取最近两次提交，用于检查 commit message
 
-      # 2. 检查是否需要打包（判断 commit message 或 tag）
-      - name: 检查是否需要打包
-        id: check
-        run: |
-          # 如果是 tag 触发，直接打包
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "需要打包：由 tag 触发"
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # 检查最近一次 commit message 是否包含"打包"
-          if git log -1 --pretty=%B | grep -q "打包"; then
-            echo "需要打包：commit message 包含'打包'"
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          else
-            echo "不需要打包：commit message 不包含'打包'"
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          fi
-
-      # 以下步骤只有在需要打包时才执行
-      - name: 安装 Rust（用 rust-toolchain.toml 自动管理版本）
-        if: steps.check.outputs.should_build == 'true'
+      # 2. 安装 Rust
+      - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -48,44 +23,48 @@ jobs:
 
       # 3. 安装 cbindgen
       - name: 安装 cbindgen
-        if: steps.check.outputs.should_build == 'true'
         run: cargo install cbindgen
 
-      # 3.5 安装 protobuf（protoc 编译器）
+      # 4. 安装 protobuf
       - name: 安装 protobuf
-        if: steps.check.outputs.should_build == 'true'
         run: brew install protobuf
 
-      # 4. 赋予 build_apple.sh 执行权限
+      # 5. 赋予 build_apple.sh 执行权限
       - name: 赋予 build_apple.sh 执行权限
-        if: steps.check.outputs.should_build == 'true'
         run: chmod +x scripts/build_apple.sh
 
-      # 5. 执行打包脚本
+      # 6. 执行打包脚本
       - name: 执行 iOS 打包脚本
-        if: steps.check.outputs.should_build == 'true'
         run: ./scripts/build_apple.sh
 
-      # 6. 上传产物（可选，方便下载）
-      - name: 上传 XCFramework 产物
-        if: steps.check.outputs.should_build == 'true'
+      # 7. 上传产物到 Actions（方便在页面直接下载）
+      - name: 上传产物到 Actions
         uses: actions/upload-artifact@v4
         with:
           name: clashrs.xcframework
           path: build/clashrs.xcframework
+          retention-days: 30 # 保留 30 天
 
-      # 7. 创建 GitHub Release 并上传产物（只在 tag 触发时执行）
-      - name: 发布 Release 并上传 XCFramework
-        if: startsWith(github.ref, 'refs/tags/')
+      # 8. 打包 XCFramework 为 zip 文件
+      - name: 打包 XCFramework 为 zip
+        run: |
+          cd build
+          zip -r clashrs.xcframework.zip clashrs.xcframework
+          echo "打包完成：clashrs.xcframework.zip"
+
+      # 9. 创建/更新固定的 Release 并上传产物
+      - name: 创建/更新 Release 并上传产物
         uses: softprops/action-gh-release@v2
         with:
-          files: build/clashrs.xcframework/**/*
-          name: "iOS SDK ${{ github.ref_name }}"
-          tag_name: ${{ github.ref_name }}
+          files: build/clashrs.xcframework.zip
+          name: "iOS SDK Latest"
+          tag_name: "ios-latest"
           body: |
-            自动发布的 iOS SDK 包。
-            - 版本: ${{ github.ref_name }}
-            - 日期: ${{ github.event.head_commit.timestamp || github.event.repository.pushed_at }}
-            - 包含 clashrs.xcframework
+            最新的 iOS SDK 包，自动从 iOS 分支构建。
+            - 构建时间: ${{ github.event.head_commit.timestamp || github.event.repository.pushed_at }}
+            - 提交信息: ${{ github.event.head_commit.message }}
+            - 包含 clashrs.xcframework.zip
+          # 始终覆盖同名 tag
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
