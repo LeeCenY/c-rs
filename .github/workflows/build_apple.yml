@@ -1,13 +1,14 @@
-name: Build Apple XCFramework
+name: Build iOS XCFramework
 
 on:
   workflow_dispatch: # 手动触发
   push:
-    branches: [ main, master ] # 推送到主分支时触发
+    branches: [ iOS ] # 只在 iOS 分支触发
   pull_request:
+    branches: [ iOS ] # 只在 iOS 分支触发
 
 jobs:
-  build-apple:
+  build-ios:
     runs-on: macos-latest # 必须用 macOS runner
 
     steps:
@@ -31,7 +32,7 @@ jobs:
         run: chmod +x scripts/build_apple.sh
 
       # 5. 执行打包脚本
-      - name: 执行 Apple 打包脚本
+      - name: 执行 iOS 打包脚本
         run: ./scripts/build_apple.sh
 
       # 6. 上传产物（可选，方便下载）
