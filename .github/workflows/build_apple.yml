@@ -27,6 +27,10 @@ jobs:
       - name: 安装 cbindgen
         run: cargo install cbindgen
 
+      # 3.5 安装 protobuf（protoc 编译器）
+      - name: 安装 protobuf
+        run: brew install protobuf
+
       # 4. 赋予脚本执行权限
       - name: 赋予 build_apple.sh 执行权限
         run: chmod +x scripts/build_apple.sh
